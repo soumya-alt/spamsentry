@@ -50,55 +50,63 @@ client.on('messageCreate', async (message) => {
         return;
     }
 
-    // Check for spam
-    const spamResult = await handleSpamDetection(message);
-    if (spamResult.isSpam) {
-        try {
+    try {
+        // Check for spam
+        const spamResult = await handleSpamDetection(message);
+        if (spamResult.isSpam) {
             console.log(`Spam detected from ${message.author.tag}: ${spamResult.reason}`);
             
-            // Send warning message before deleting
-            const warningMsg = await message.channel.send({
-                content: `⚠️ ${message.author}, your message was flagged as spam: ${spamResult.reason}`,
-                allowedMentions: { users: [message.author.id] }
-            });
-
-            // Delete the spam message
+            // Delete the spam message immediately
             await message.delete().catch(console.error);
             
-            // Timeout the user for 24 hours
+            // Apply timeout immediately
             await message.member.timeout(24 * 60 * 60 * 1000, `Spam detection: ${spamResult.reason}`).catch(console.error);
             
-            // Log the incident
-            const logChannel = await client.channels.fetch(config.logChannelId);
-            if (logChannel) {
-                await logChannel.send({
-                    embeds: [{
-                        title: '🚫 Spam Detected',
-                        description: `User: ${message.author.tag} (${message.author.id})`,
-                        fields: [
-                            { name: 'Channel', value: message.channel.name },
-                            { name: 'Reason', value: spamResult.reason },
-                            { name: 'Action Taken', value: 'Message deleted and user timed out for 24 hours' }
-                        ],
-                        color: 0xFF0000,
-                        timestamp: new Date()
-                    }]
-                });
-            }
-
-            // Delete warning message after 5 seconds
-            setTimeout(() => {
-                warningMsg.delete().catch(console.error);
-            }, 5000);
-
-        } catch (error) {
-            console.error('Error handling spam:', error);
-            // Try to send error message to the channel
-            message.channel.send({
-                content: '❌ An error occurred while handling spam detection. Please contact an administrator.',
-                allowedMentions: { users: [message.author.id] }
-            }).catch(console.error);
+            // Send warning message and handle logging asynchronously
+            Promise.all([
+                // Send warning message
+                message.channel.send({
+                    content: `⚠️ ${message.author}, your message was flagged as spam: ${spamResult.reason}`,
+                    allowedMentions: { users: [message.author.id] }
+                }).then(warningMsg => {
+                    // Delete warning message after 5 seconds
+                    setTimeout(() => {
+                        warningMsg.delete().catch(console.error);
+                    }, 5000);
+                }).catch(console.error),
+                
+                // Log the incident
+                (async () => {
+                    try {
+                        const logChannel = await client.channels.fetch(config.logChannelId);
+                        if (logChannel) {
+                            await logChannel.send({
+                                embeds: [{
+                                    title: '🚫 Spam Detected',
+                                    description: `User: ${message.author.tag} (${message.author.id})`,
+                                    fields: [
+                                        { name: 'Channel', value: message.channel.name },
+                                        { name: 'Reason', value: spamResult.reason },
+                                        { name: 'Action Taken', value: 'Message deleted and user timed out for 24 hours' }
+                                    ],
+                                    color: 0xFF0000,
+                                    timestamp: new Date()
+                                }]
+                            });
+                        }
+                    } catch (error) {
+                        console.error('Error logging spam incident:', error);
+                    }
+                })()
+            ]).catch(console.error);
         }
+    } catch (error) {
+        console.error('Error handling spam:', error);
+        // Try to send error message to the channel
+        message.channel.send({
+            content: '❌ An error occurred while handling spam detection. Please contact an administrator.',
+            allowedMentions: { users: [message.author.id] }
+        }).catch(console.error);
     }
 
     // Handle commands

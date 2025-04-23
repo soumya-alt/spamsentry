@@ -2,6 +2,10 @@ const { getSpamRules, getBannedWords } = require('../database');
 
 // Cache for message history to detect repeated messages
 const messageCache = new Map();
+// Cache for banned words
+const bannedWordsCache = new Set();
+let lastBannedWordsFetch = 0;
+const BANNED_WORDS_CACHE_TTL = 60000; // 1 minute
 const REPEAT_THRESHOLD = 3;
 const TIME_WINDOW = 5000; // 5 seconds
 
@@ -144,40 +148,34 @@ function checkUrls(content) {
 }
 
 async function checkBannedWords(content) {
-    const bannedWords = await getBannedWords();
-    const contentLower = content.toLowerCase();
+    // Refresh cache if needed
+    const now = Date.now();
+    if (now - lastBannedWordsFetch > BANNED_WORDS_CACHE_TTL) {
+        const bannedWords = await getBannedWords();
+        bannedWordsCache.clear();
+        for (const bannedWord of bannedWords) {
+            bannedWordsCache.add(bannedWord.word.toLowerCase());
+        }
+        lastBannedWordsFetch = now;
+    }
     
-    for (const bannedWord of bannedWords) {
+    const contentLower = content.toLowerCase();
+    const words = contentLower.split(/\s+/);
+    
+    for (const bannedWord of bannedWordsCache) {
         // Check for exact word match
-        if (contentLower.includes(bannedWord.word.toLowerCase())) {
+        if (words.includes(bannedWord)) {
             return { 
                 isSpam: true, 
-                reason: `Message contains banned word: "${bannedWord.word}"` 
+                reason: `Message contains banned word: "${bannedWord}"` 
             };
         }
         
-        // Check for word with spaces around it
-        const wordWithSpaces = ` ${bannedWord.word.toLowerCase()} `;
-        if (contentLower.includes(wordWithSpaces)) {
+        // Check for partial match within words (for compound words)
+        if (contentLower.includes(bannedWord)) {
             return { 
                 isSpam: true, 
-                reason: `Message contains banned word: "${bannedWord.word}"` 
-            };
-        }
-        
-        // Check for word at start of message
-        if (contentLower.startsWith(bannedWord.word.toLowerCase() + ' ')) {
-            return { 
-                isSpam: true, 
-                reason: `Message contains banned word: "${bannedWord.word}"` 
-            };
-        }
-        
-        // Check for word at end of message
-        if (contentLower.endsWith(' ' + bannedWord.word.toLowerCase())) {
-            return { 
-                isSpam: true, 
-                reason: `Message contains banned word: "${bannedWord.word}"` 
+                reason: `Message contains banned word: "${bannedWord}"` 
             };
         }
     }
