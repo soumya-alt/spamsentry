@@ -9,10 +9,11 @@ if (!fs.existsSync(dataDir)) {
 }
 
 const dbPath = path.join(dataDir, 'spamsentry.db');
+let db = null;
 
 function initializeDatabase() {
     return new Promise((resolve, reject) => {
-        const db = new sqlite3.Database(dbPath, (err) => {
+        db = new sqlite3.Database(dbPath, (err) => {
             if (err) {
                 console.error('Error opening database:', err);
                 reject(err);
@@ -52,11 +53,15 @@ function initializeDatabase() {
     });
 }
 
-function addTimeoutRecord(userId, guildId, reason) {
+function addTimeoutRecord(userId, reason, duration) {
     return new Promise((resolve, reject) => {
+        if (!db) {
+            reject(new Error('Database not initialized'));
+            return;
+        }
         db.run(
-            'INSERT INTO timeout_history (user_id, guild_id, reason) VALUES (?, ?, ?)',
-            [userId, guildId, reason],
+            'INSERT INTO timeout_history (user_id, reason, duration) VALUES (?, ?, ?)',
+            [userId, reason, duration],
             function(err) {
                 if (err) reject(err);
                 else resolve(this.lastID);
@@ -65,11 +70,15 @@ function addTimeoutRecord(userId, guildId, reason) {
     });
 }
 
-function getTimeoutHistory(userId, guildId) {
+function getTimeoutHistory(userId) {
     return new Promise((resolve, reject) => {
+        if (!db) {
+            reject(new Error('Database not initialized'));
+            return;
+        }
         db.all(
-            'SELECT * FROM timeout_history WHERE user_id = ? AND guild_id = ? ORDER BY timestamp DESC',
-            [userId, guildId],
+            'SELECT * FROM timeout_history WHERE user_id = ? ORDER BY timestamp DESC',
+            [userId],
             (err, rows) => {
                 if (err) reject(err);
                 else resolve(rows);
@@ -78,11 +87,15 @@ function getTimeoutHistory(userId, guildId) {
     });
 }
 
-function addSpamRule(pattern, description, createdBy) {
+function addSpamRule(pattern, description) {
     return new Promise((resolve, reject) => {
+        if (!db) {
+            reject(new Error('Database not initialized'));
+            return;
+        }
         db.run(
-            'INSERT INTO spam_rules (pattern, description, created_by) VALUES (?, ?, ?)',
-            [pattern, description, createdBy],
+            'INSERT INTO spam_rules (pattern, description) VALUES (?, ?)',
+            [pattern, description],
             function(err) {
                 if (err) reject(err);
                 else resolve(this.lastID);
@@ -93,6 +106,10 @@ function addSpamRule(pattern, description, createdBy) {
 
 function getSpamRules() {
     return new Promise((resolve, reject) => {
+        if (!db) {
+            reject(new Error('Database not initialized'));
+            return;
+        }
         db.all('SELECT * FROM spam_rules ORDER BY created_at DESC', (err, rows) => {
             if (err) reject(err);
             else resolve(rows);
@@ -102,6 +119,10 @@ function getSpamRules() {
 
 function deleteSpamRule(ruleId) {
     return new Promise((resolve, reject) => {
+        if (!db) {
+            reject(new Error('Database not initialized'));
+            return;
+        }
         db.run('DELETE FROM spam_rules WHERE id = ?', [ruleId], function(err) {
             if (err) reject(err);
             else resolve(this.changes);
@@ -109,11 +130,15 @@ function deleteSpamRule(ruleId) {
     });
 }
 
-function addBannedWord(word, addedBy) {
+function addBannedWord(word) {
     return new Promise((resolve, reject) => {
+        if (!db) {
+            reject(new Error('Database not initialized'));
+            return;
+        }
         db.run(
-            'INSERT INTO banned_words (word, added_by) VALUES (?, ?)',
-            [word.toLowerCase(), addedBy],
+            'INSERT INTO banned_words (word) VALUES (?)',
+            [word.toLowerCase()],
             function(err) {
                 if (err) reject(err);
                 else resolve(this.lastID);
@@ -124,6 +149,10 @@ function addBannedWord(word, addedBy) {
 
 function removeBannedWord(word) {
     return new Promise((resolve, reject) => {
+        if (!db) {
+            reject(new Error('Database not initialized'));
+            return;
+        }
         db.run(
             'DELETE FROM banned_words WHERE word = ?',
             [word.toLowerCase()],
@@ -137,13 +166,14 @@ function removeBannedWord(word) {
 
 function getBannedWords() {
     return new Promise((resolve, reject) => {
-        db.all(
-            'SELECT * FROM banned_words ORDER BY created_at DESC',
-            (err, rows) => {
-                if (err) reject(err);
-                else resolve(rows);
-            }
-        );
+        if (!db) {
+            reject(new Error('Database not initialized'));
+            return;
+        }
+        db.all('SELECT * FROM banned_words ORDER BY added_at DESC', (err, rows) => {
+            if (err) reject(err);
+            else resolve(rows);
+        });
     });
 }
 

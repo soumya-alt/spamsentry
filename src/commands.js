@@ -8,6 +8,7 @@ const {
     removeBannedWord,
     getBannedWords
 } = require('./database');
+const config = require('./config');
 
 const commands = [
     new SlashCommandBuilder()
@@ -71,270 +72,120 @@ const commands = [
         .setDescription('List all banned words')
 ];
 
-async function handleCommands(interaction) {
-    // Defer the reply immediately to prevent timeout
-    await interaction.deferReply({ ephemeral: true });
-
-    // Check for administrator permission
-    if (!interaction.member.permissions.has('Administrator')) {
-        await interaction.editReply({ 
-            content: '❌ You need Administrator permission to use this command.', 
-            ephemeral: true 
-        });
-        return;
-    }
-
-    // Check if the bot has necessary permissions
-    const botMember = interaction.guild.members.cache.get(interaction.client.user.id);
-    if (!botMember.permissions.has(['ManageMessages', 'ModerateMembers'])) {
-        await interaction.editReply({ 
-            content: '❌ I need the following permissions to work properly:\n- Manage Messages\n- Moderate Members\n\nPlease ask an administrator to grant these permissions.', 
-            ephemeral: true 
-        });
-        return;
-    }
+async function handleCommands(message) {
+    const args = message.content.slice(config.prefix.length).trim().split(/ +/);
+    const command = args.shift().toLowerCase();
 
     try {
-        switch (interaction.commandName) {
+        switch (command) {
             case 'timeout-history':
-                await handleTimeoutHistory(interaction);
+                const user = message.mentions.users.first();
+                if (!user) {
+                    await message.reply('Please mention a user to check their timeout history.');
+                    return;
+                }
+                const history = await getTimeoutHistory(user.id);
+                if (history.length === 0) {
+                    await message.reply(`${user.tag} has no timeout history.`);
+                    return;
+                }
+                const historyEmbed = {
+                    title: `Timeout History for ${user.tag}`,
+                    fields: history.map(record => ({
+                        name: new Date(record.timestamp).toLocaleString(),
+                        value: `Reason: ${record.reason}\nDuration: ${record.duration} minutes`
+                    })),
+                    color: 0xFF0000
+                };
+                await message.reply({ embeds: [historyEmbed] });
                 break;
-            case 'unmute':
-                await handleUnmute(interaction);
-                break;
+
             case 'add-rule':
-                await handleAddRule(interaction);
+                if (args.length < 2) {
+                    await message.reply('Please provide a pattern and description for the rule.');
+                    return;
+                }
+                const pattern = args[0];
+                const description = args.slice(1).join(' ');
+                await addSpamRule(pattern, description);
+                await message.reply('Spam rule added successfully.');
                 break;
+
             case 'list-rules':
-                await handleListRules(interaction);
+                const rules = await getSpamRules();
+                if (rules.length === 0) {
+                    await message.reply('No spam rules configured.');
+                    return;
+                }
+                const rulesEmbed = {
+                    title: 'Spam Detection Rules',
+                    fields: rules.map(rule => ({
+                        name: `Rule #${rule.id}`,
+                        value: `Pattern: ${rule.pattern}\nDescription: ${rule.description}`
+                    })),
+                    color: 0x00FF00
+                };
+                await message.reply({ embeds: [rulesEmbed] });
                 break;
+
             case 'delete-rule':
-                await handleDeleteRule(interaction);
+                const ruleId = parseInt(args[0]);
+                if (isNaN(ruleId)) {
+                    await message.reply('Please provide a valid rule ID.');
+                    return;
+                }
+                const result = await deleteSpamRule(ruleId);
+                if (result === 0) {
+                    await message.reply('Rule not found.');
+                    return;
+                }
+                await message.reply('Rule deleted successfully.');
                 break;
+
             case 'add-banned-word':
-                await handleAddBannedWord(interaction);
+                if (args.length === 0) {
+                    await message.reply('Please provide a word to ban.');
+                    return;
+                }
+                const word = args[0].toLowerCase();
+                await addBannedWord(word);
+                await message.reply(`Word "${word}" added to banned words list.`);
                 break;
+
             case 'remove-banned-word':
-                await handleRemoveBannedWord(interaction);
+                if (args.length === 0) {
+                    await message.reply('Please provide a word to remove from the banned list.');
+                    return;
+                }
+                const wordToRemove = args[0].toLowerCase();
+                const removeResult = await removeBannedWord(wordToRemove);
+                if (removeResult === 0) {
+                    await message.reply('Word not found in banned list.');
+                    return;
+                }
+                await message.reply(`Word "${wordToRemove}" removed from banned words list.`);
                 break;
+
             case 'list-banned-words':
-                await handleListBannedWords(interaction);
+                const bannedWords = await getBannedWords();
+                if (bannedWords.length === 0) {
+                    await message.reply('No banned words configured.');
+                    return;
+                }
+                const wordsEmbed = {
+                    title: 'Banned Words List',
+                    description: bannedWords.map(w => w.word).join(', '),
+                    color: 0xFF0000
+                };
+                await message.reply({ embeds: [wordsEmbed] });
                 break;
+
+            default:
+                await message.reply('Unknown command. Available commands: timeout-history, add-rule, list-rules, delete-rule, add-banned-word, remove-banned-word, list-banned-words');
         }
     } catch (error) {
-        console.error(`Error handling command ${interaction.commandName}:`, error);
-        await interaction.editReply({
-            content: '❌ An error occurred while processing your command. Please try again.',
-            ephemeral: true
-        });
-    }
-}
-
-async function handleTimeoutHistory(interaction) {
-    const user = interaction.options.getUser('user');
-    const history = await getTimeoutHistory(user.id, interaction.guildId);
-
-    if (history.length === 0) {
-        await interaction.editReply({
-            content: `No timeout history found for ${user.tag}`,
-            ephemeral: true
-        });
-        return;
-    }
-
-    const embed = {
-        title: `Timeout History for ${user.tag}`,
-        fields: history.map(record => ({
-            name: new Date(record.timestamp).toLocaleString(),
-            value: record.reason
-        })),
-        color: 0xFF0000
-    };
-
-    await interaction.editReply({ embeds: [embed], ephemeral: true });
-}
-
-async function handleUnmute(interaction) {
-    const user = interaction.options.getUser('user');
-    console.log(`Attempting to unmute user: ${user.tag} (${user.id})`);
-    
-    try {
-        const member = await interaction.guild.members.fetch(user.id);
-        console.log(`Found member: ${member.user.tag}`);
-        
-        if (!member.communicationDisabledUntil) {
-            await interaction.editReply({
-                content: `${user.tag} is not currently muted.`,
-                ephemeral: true
-            });
-            return;
-        }
-
-        await member.timeout(null, 'Timeout removed by admin');
-        console.log(`Successfully removed timeout from ${user.tag}`);
-        
-        await interaction.editReply({
-            content: `Successfully removed timeout from ${user.tag}`,
-            ephemeral: true
-        });
-    } catch (error) {
-        console.error('Error removing timeout:', error);
-        await interaction.editReply({
-            content: `Failed to remove timeout. Error: ${error.message}\nMake sure I have the necessary permissions (Moderate Members).`,
-            ephemeral: true
-        });
-    }
-}
-
-async function handleAddRule(interaction) {
-    const pattern = interaction.options.getString('pattern');
-    const description = interaction.options.getString('description');
-
-    try {
-        // Test if the pattern is valid regex
-        new RegExp(pattern);
-        
-        await addSpamRule(pattern, description, interaction.user.id);
-        await interaction.editReply({
-            content: 'Spam rule added successfully',
-            ephemeral: true
-        });
-    } catch (error) {
-        await interaction.editReply({
-            content: 'Invalid regex pattern. Please try again.',
-            ephemeral: true
-        });
-    }
-}
-
-async function handleListRules(interaction) {
-    const rules = await getSpamRules();
-
-    if (rules.length === 0) {
-        await interaction.editReply({
-            content: 'No spam rules configured',
-            ephemeral: true
-        });
-        return;
-    }
-
-    const embed = {
-        title: 'Spam Detection Rules',
-        fields: rules.map(rule => ({
-            name: `Rule #${rule.id}`,
-            value: `Pattern: \`${rule.pattern}\`\nDescription: ${rule.description}\nAdded by: <@${rule.created_by}>`
-        })),
-        color: 0x00FF00
-    };
-
-    await interaction.editReply({ embeds: [embed], ephemeral: true });
-}
-
-async function handleDeleteRule(interaction) {
-    const ruleId = interaction.options.getInteger('rule_id');
-
-    try {
-        const result = await deleteSpamRule(ruleId);
-        if (result > 0) {
-            await interaction.editReply({
-                content: `Successfully deleted rule #${ruleId}`,
-                ephemeral: true
-            });
-        } else {
-            await interaction.editReply({
-                content: `Rule #${ruleId} not found`,
-                ephemeral: true
-            });
-        }
-    } catch (error) {
-        console.error('Error deleting rule:', error);
-        await interaction.editReply({
-            content: 'Failed to delete rule',
-            ephemeral: true
-        });
-    }
-}
-
-async function handleAddBannedWord(interaction) {
-    const word = interaction.options.getString('word');
-    
-    try {
-        await addBannedWord(word, interaction.user.id);
-        await interaction.editReply({
-            content: `✅ Successfully added "${word}" to the banned words list`,
-            ephemeral: true
-        });
-    } catch (error) {
-        if (error.code === 'SQLITE_CONSTRAINT') {
-            await interaction.editReply({
-                content: `❌ "${word}" is already in the banned words list`,
-                ephemeral: true
-            });
-        } else {
-            console.error('Error adding banned word:', error);
-            await interaction.editReply({
-                content: '❌ Failed to add banned word. Please try again.',
-                ephemeral: true
-            });
-        }
-    }
-}
-
-async function handleRemoveBannedWord(interaction) {
-    const word = interaction.options.getString('word');
-    
-    try {
-        const result = await removeBannedWord(word);
-        if (result > 0) {
-            await interaction.editReply({
-                content: `✅ Successfully removed "${word}" from the banned words list`,
-                ephemeral: true
-            });
-        } else {
-            await interaction.editReply({
-                content: `❌ "${word}" was not found in the banned words list`,
-                ephemeral: true
-            });
-        }
-    } catch (error) {
-        console.error('Error removing banned word:', error);
-        await interaction.editReply({
-            content: '❌ Failed to remove banned word. Please try again.',
-            ephemeral: true
-        });
-    }
-}
-
-async function handleListBannedWords(interaction) {
-    try {
-        const words = await getBannedWords();
-        
-        if (words.length === 0) {
-            await interaction.editReply({
-                content: '📝 No banned words configured',
-                ephemeral: true
-            });
-            return;
-        }
-
-        const embed = {
-            title: '📝 Banned Words List',
-            description: `Total banned words: ${words.length}`,
-            fields: words.map(word => ({
-                name: `Word #${word.id}`,
-                value: `Word: \`${word.word}\`\nAdded by: <@${word.added_by}>\nAdded at: ${new Date(word.created_at).toLocaleString()}`
-            })),
-            color: 0x00FF00,
-            timestamp: new Date()
-        };
-
-        await interaction.editReply({ embeds: [embed], ephemeral: true });
-    } catch (error) {
-        console.error('Error listing banned words:', error);
-        await interaction.editReply({
-            content: '❌ Failed to list banned words. Please try again.',
-            ephemeral: true
-        });
+        console.error('Error handling command:', error);
+        await message.reply('An error occurred while processing your command.');
     }
 }
 
