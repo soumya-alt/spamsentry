@@ -1,4 +1,4 @@
-const { getSpamRules, getBannedWords } = require('../database');
+const { getSpamRules, getBannedWords } = require('../utils/memoryStorage');
 
 // Cache for message history to detect repeated messages
 const messageCache = new Map();

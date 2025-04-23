@@ -170,7 +170,7 @@ function getBannedWords() {
             reject(new Error('Database not initialized'));
             return;
         }
-        db.all('SELECT * FROM banned_words ORDER BY added_at DESC', (err, rows) => {
+        db.all('SELECT * FROM banned_words', (err, rows) => {
             if (err) reject(err);
             else resolve(rows);
         });

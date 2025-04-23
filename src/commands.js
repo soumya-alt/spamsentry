@@ -7,7 +7,7 @@ const {
     addBannedWord,
     removeBannedWord,
     getBannedWords
-} = require('./database');
+} = require('./utils/memoryStorage');
 const config = require('./config');
 
 const commands = [

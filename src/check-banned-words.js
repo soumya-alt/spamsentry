@@ -1,21 +1,18 @@
-const { initializeDatabase, getBannedWords } = require('./database');
+const { initializeStorage, getBannedWords } = require('./utils/memoryStorage');
 
 async function checkBannedWords() {
     try {
-        // Initialize the database first
-        initializeDatabase();
-        
-        // Wait a moment for the database to initialize
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // Initialize the storage first
+        await initializeStorage();
         
         const words = await getBannedWords();
-        console.log(`Found ${words.length} banned words in the database:`);
+        console.log(`Found ${words.length} banned words in the storage:`);
         
         if (words.length === 0) {
-            console.log('No banned words found in the database.');
+            console.log('No banned words found in the storage.');
         } else {
             words.forEach(word => {
-                console.log(`- ${word.word} (added by: ${word.added_by}, at: ${new Date(word.created_at).toLocaleString()})`);
+                console.log(`- ${word.word}`);
             });
         }
     } catch (error) {

@@ -1,14 +1,11 @@
 const fs = require('fs');
 const path = require('path');
-const { initializeDatabase, addBannedWord } = require('./database');
+const { initializeStorage, addBannedWord } = require('./utils/memoryStorage');
 
 async function importBannedWords() {
     try {
-        // Initialize the database first
-        initializeDatabase();
-        
-        // Wait a moment for the database to initialize
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // Initialize the storage first
+        await initializeStorage();
         
         const filePath = path.join(process.cwd(), 'bannedwords.txt');
         console.log('Reading banned words from:', filePath);
@@ -22,17 +19,11 @@ async function importBannedWords() {
 
         for (const word of words) {
             try {
-                await addBannedWord(word, 'SYSTEM');
+                await addBannedWord(word);
                 console.log(`✅ Added word: ${word}`);
             } catch (error) {
-                if (error.code === 'SQLITE_CONSTRAINT') {
-                    console.log(`⚠️ Word already exists: ${word}`);
-                } else {
-                    console.error(`❌ Error adding word ${word}:`, error);
-                }
+                console.error(`❌ Error adding word ${word}:`, error);
             }
-            // Add a small delay between insertions
-            await new Promise(resolve => setTimeout(resolve, 100));
         }
 
         console.log('Import completed!');

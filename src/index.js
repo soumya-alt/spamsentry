@@ -1,6 +1,6 @@
 const { Client, GatewayIntentBits, Partials } = require('discord.js');
 const { handleSpamDetection } = require('./utils/spamDetector');
-const { initializeDatabase } = require('./database');
+const { initializeStorage } = require('./utils/memoryStorage');
 const { handleCommands } = require('./commands');
 const config = require('./config');
 const healthServer = require('./health');
@@ -15,12 +15,12 @@ const client = new Client({
     partials: [Partials.Message, Partials.Channel, Partials.Reaction]
 });
 
-// Initialize database and start bot
+// Initialize storage and start bot
 async function startBot() {
     try {
-        // Initialize database
-        await initializeDatabase();
-        console.log('Database initialized successfully');
+        // Initialize in-memory storage
+        await initializeStorage();
+        console.log('In-memory storage initialized successfully');
 
         // Login to Discord
         await client.login(config.token);
