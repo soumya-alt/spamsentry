@@ -6,12 +6,12 @@ const messageCache = new Map();
 const bannedWordsCache = new Set();
 let lastBannedWordsFetch = 0;
 const BANNED_WORDS_CACHE_TTL = 60000; // 1 minute
-const REPEAT_THRESHOLD = 3;
+const REPEAT_THRESHOLD = 2;
 const TIME_WINDOW = 5000; // 5 seconds
-const MAX_EMOJI_COUNT = 5;
-const MAX_CAPS_PERCENTAGE = 70;
-const MIN_MESSAGE_LENGTH_FOR_CAPS = 8;
-const MAX_REPEATED_CHARS = 5;
+const MAX_EMOJI_COUNT = 4;
+const MAX_CAPS_PERCENTAGE = 60;
+const MIN_MESSAGE_LENGTH_FOR_CAPS = 6;
+const MAX_REPEATED_CHARS = 4;
 
 // Emoji detection regex
 const EMOJI_REGEX = /[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F100}-\u{1F1FF}]|[\u{1F200}-\u{1F2FF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{1F900}-\u{1F9FF}]|[\u{1F1E0}-\u{1F1FF}]/gu;
@@ -65,6 +65,39 @@ const SUSPICIOUS_URL_PATTERNS = [
     /discord.*t\.co/i
 ];
 
+// Function to check for character spam
+function checkCharacterSpam(content) {
+    // Check for repeated characters (e.g., "aaaaa", "!!!!!")
+    if (content.match(/(.)\1{3,}/)) {
+        console.log('Detected repeated characters');
+        return true;
+    }
+
+    // Check for keyboard spam (e.g., "asdfgh", "qwerty")
+    if (content.match(/[asdfgh]{4,}|[qwerty]{4,}|[zxcvbn]{4,}/i)) {
+        console.log('Detected keyboard spam');
+        return true;
+    }
+
+    // Check for random character spam
+    const randomCharPattern = content.replace(/\s+/g, '').length > 0 && 
+        content.replace(/[^a-zA-Z0-9\s]/g, '').length === 0;
+    if (randomCharPattern) {
+        console.log('Detected random character spam');
+        return true;
+    }
+
+    return false;
+}
+
+// Function to check for line spam
+function checkLineSpam(content) {
+    const lines = content.split('\n');
+    const hasExcessiveLines = lines.length > 4; // Reduced from 5 to 4
+    const hasEmptyLines = lines.some(line => line.trim() === '');
+    return hasExcessiveLines || hasEmptyLines;
+}
+
 // Function to check for excessive caps
 function checkExcessiveCaps(content) {
     if (content.length < MIN_MESSAGE_LENGTH_FOR_CAPS) return false;
@@ -76,16 +109,28 @@ function checkExcessiveCaps(content) {
     return percentage > MAX_CAPS_PERCENTAGE;
 }
 
-// Function to check for character spam
-function checkCharacterSpam(content) {
-    const charSpamRegex = /(.)\1{4,}/; // Same character repeated 5 or more times
-    return charSpamRegex.test(content);
-}
+// Function to check for gibberish/random text
+function checkGibberish(content) {
+    // Check for lack of vowels
+    const vowelRatio = (content.match(/[aeiou]/gi) || []).length / content.length;
+    if (vowelRatio < 0.15 && content.length > 5) { // If less than 15% vowels
+        console.log('Detected low vowel ratio:', vowelRatio);
+        return true;
+    }
 
-// Function to check for line spam
-function checkLineSpam(content) {
-    const lines = content.split('\n');
-    return lines.length > 5; // More than 5 lines in a single message
+    // Check for random consonant clusters
+    if (content.match(/[bcdfghjklmnpqrstvwxz]{5,}/i)) {
+        console.log('Detected consonant cluster');
+        return true;
+    }
+
+    // Check for repetitive patterns
+    if (content.match(/(.{2,})\1{2,}/)) {
+        console.log('Detected repetitive pattern');
+        return true;
+    }
+
+    return false;
 }
 
 async function handleSpamDetection(message) {
@@ -97,6 +142,12 @@ async function handleSpamDetection(message) {
     if (await checkRepeatedMessages(message)) {
         console.log('Spam detected: Repeated messages');
         return { isSpam: true, reason: 'Repeated messages detected' };
+    }
+
+    // Check for gibberish
+    if (checkGibberish(content)) {
+        console.log('Spam detected: Gibberish text');
+        return { isSpam: true, reason: 'Message appears to be gibberish or random text' };
     }
 
     // Check for excessive caps
@@ -114,7 +165,7 @@ async function handleSpamDetection(message) {
     // Check for line spam
     if (checkLineSpam(content)) {
         console.log('Spam detected: Line spam');
-        return { isSpam: true, reason: 'Too many lines in message' };
+        return { isSpam: true, reason: 'Message formatting spam detected' };
     }
 
     // Check for excessive emojis
