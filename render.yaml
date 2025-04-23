@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: spamsentry
+    env: node
+    buildCommand: npm install
+    startCommand: node src/index.js
+    envVars:
+      - key: DISCORD_TOKEN
+        sync: false
+      - key: LOG_CHANNEL_ID
+        sync: false
+      - key: CLIENT_ID
+        sync: false 
