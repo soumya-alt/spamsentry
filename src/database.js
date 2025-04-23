@@ -1,46 +1,54 @@
 const sqlite3 = require('sqlite3').verbose();
+const fs = require('fs');
 const path = require('path');
 
-let db;
-
-function initializeDatabase() {
-    db = new sqlite3.Database(path.join(__dirname, '../data/spamsentry.db'), (err) => {
-        if (err) {
-            console.error('Error opening database:', err);
-            return;
-        }
-        console.log('Connected to SQLite database');
-        createTables();
-    });
+// Ensure data directory exists
+const dataDir = path.join(__dirname, '..', 'data');
+if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
 }
 
-function createTables() {
-    db.serialize(() => {
-        // Table for timeout history
-        db.run(`CREATE TABLE IF NOT EXISTS timeout_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id TEXT NOT NULL,
-            guild_id TEXT NOT NULL,
-            reason TEXT NOT NULL,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-        )`);
+const dbPath = path.join(dataDir, 'spamsentry.db');
 
-        // Table for spam rules
-        db.run(`CREATE TABLE IF NOT EXISTS spam_rules (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            pattern TEXT NOT NULL,
-            description TEXT NOT NULL,
-            created_by TEXT NOT NULL,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )`);
+function initializeDatabase() {
+    return new Promise((resolve, reject) => {
+        const db = new sqlite3.Database(dbPath, (err) => {
+            if (err) {
+                console.error('Error opening database:', err);
+                reject(err);
+                return;
+            }
 
-        // Table for banned words
-        db.run(`CREATE TABLE IF NOT EXISTS banned_words (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            word TEXT NOT NULL UNIQUE,
-            added_by TEXT NOT NULL,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )`);
+            // Create tables if they don't exist
+            db.serialize(() => {
+                // Spam detection rules table
+                db.run(`CREATE TABLE IF NOT EXISTS spam_rules (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    pattern TEXT NOT NULL,
+                    description TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )`);
+
+                // Banned words table
+                db.run(`CREATE TABLE IF NOT EXISTS banned_words (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    word TEXT NOT NULL UNIQUE,
+                    added_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )`);
+
+                // Timeout history table
+                db.run(`CREATE TABLE IF NOT EXISTS timeout_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT NOT NULL,
+                    reason TEXT,
+                    duration INTEGER,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                )`);
+
+                console.log('Database initialized successfully');
+                resolve(db);
+            });
+        });
     });
 }
 

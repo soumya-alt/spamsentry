@@ -1,6 +1,6 @@
 const { Client, GatewayIntentBits, Partials } = require('discord.js');
-const { initializeDatabase } = require('./database');
 const { handleSpamDetection } = require('./utils/spamDetector');
+const { initializeDatabase } = require('./database');
 const { handleCommands } = require('./commands');
 const config = require('./config');
 const healthServer = require('./health');
@@ -15,8 +15,21 @@ const client = new Client({
     partials: [Partials.Message, Partials.Channel, Partials.Reaction]
 });
 
-// Initialize database when bot starts
-initializeDatabase();
+// Initialize database and start bot
+async function startBot() {
+    try {
+        // Initialize database
+        await initializeDatabase();
+        console.log('Database initialized successfully');
+
+        // Login to Discord
+        await client.login(config.token);
+        console.log(`Logged in as ${client.user.tag}`);
+    } catch (error) {
+        console.error('Failed to start bot:', error);
+        process.exit(1);
+    }
+}
 
 client.once('ready', () => {
     console.log(`Logged in as ${client.user.tag}`);
@@ -127,5 +140,5 @@ process.on('unhandledRejection', error => {
     console.error('Unhandled promise rejection:', error);
 });
 
-// Login to Discord
-client.login(config.token); 
+// Start the bot
+startBot(); 
