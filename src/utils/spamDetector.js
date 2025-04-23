@@ -63,35 +63,43 @@ const SUSPICIOUS_URL_PATTERNS = [
 
 async function handleSpamDetection(message) {
     const content = message.content.toLowerCase();
+    console.log(`Checking message for spam: "${content}"`);
     
     // Check for repeated messages
     if (await checkRepeatedMessages(message)) {
+        console.log('Spam detected: Repeated messages');
         return { isSpam: true, reason: 'Repeated messages detected' };
     }
 
     // Check for excessive emojis (only if there are more than 5 emojis)
     if (checkExcessiveEmojis(content)) {
+        console.log('Spam detected: Excessive emojis');
         return { isSpam: true, reason: 'Excessive emojis detected' };
     }
 
     // Check for URLs
     const urlCheck = checkUrls(content);
     if (urlCheck.isSpam) {
+        console.log(`Spam detected: ${urlCheck.reason}`);
         return { isSpam: true, reason: urlCheck.reason };
     }
 
     // Check for banned words
+    console.log('Checking for banned words...');
     const bannedWordCheck = await checkBannedWords(content);
     if (bannedWordCheck.isSpam) {
+        console.log(`Spam detected: ${bannedWordCheck.reason}`);
         return { isSpam: true, reason: bannedWordCheck.reason };
     }
 
     // Check custom spam rules
     const customRule = await checkCustomRules(content);
     if (customRule) {
+        console.log(`Spam detected: Custom rule - ${customRule}`);
         return { isSpam: true, reason: customRule };
     }
 
+    console.log('No spam detected');
     return { isSpam: false };
 }
 
@@ -152,6 +160,7 @@ async function checkBannedWords(content) {
     const now = Date.now();
     if (now - lastBannedWordsFetch > BANNED_WORDS_CACHE_TTL) {
         const bannedWords = await getBannedWords();
+        console.log(`Refreshing banned words cache. Found ${bannedWords.length} words.`);
         bannedWordsCache.clear();
         for (const bannedWord of bannedWords) {
             bannedWordsCache.add(bannedWord.word.toLowerCase());
@@ -162,9 +171,13 @@ async function checkBannedWords(content) {
     const contentLower = content.toLowerCase();
     const words = contentLower.split(/\s+/);
     
+    console.log(`Checking banned words in message: "${contentLower}"`);
+    console.log(`Banned words cache contains ${bannedWordsCache.size} words`);
+    
     for (const bannedWord of bannedWordsCache) {
         // Check for exact word match
         if (words.includes(bannedWord)) {
+            console.log(`Found exact match for banned word: "${bannedWord}"`);
             return { 
                 isSpam: true, 
                 reason: `Message contains banned word: "${bannedWord}"` 
@@ -173,12 +186,14 @@ async function checkBannedWords(content) {
         
         // Check for partial match within words (for compound words)
         if (contentLower.includes(bannedWord)) {
+            console.log(`Found partial match for banned word: "${bannedWord}"`);
             return { 
                 isSpam: true, 
                 reason: `Message contains banned word: "${bannedWord}"` 
             };
         }
     }
+    console.log('No banned words found in message');
     return { isSpam: false };
 }
 

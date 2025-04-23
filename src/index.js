@@ -42,7 +42,10 @@ client.on('messageCreate', async (message) => {
     console.log(`Received message from ${message.author.tag}: ${message.content}`);
     
     // Ignore bot messages and slash commands
-    if (message.author.bot || message.content.startsWith('/')) return;
+    if (message.author.bot || message.content.startsWith('/')) {
+        console.log('Ignoring message: Bot message or slash command');
+        return;
+    }
 
     // Ignore messages from users with administrator or moderator permissions for spam detection only
     if (message.member.permissions.has(['Administrator', 'ManageMessages', 'ModerateMembers'])) {
@@ -52,17 +55,27 @@ client.on('messageCreate', async (message) => {
 
     try {
         // Check for spam
+        console.log(`Starting spam detection for message: "${message.content}"`);
         const spamResult = await handleSpamDetection(message);
+        console.log(`Spam detection result:`, spamResult);
+        
         if (spamResult.isSpam) {
             console.log(`Spam detected from ${message.author.tag}: ${spamResult.reason}`);
             
             // Delete the spam message immediately
-            await message.delete().catch(console.error);
+            console.log('Deleting spam message...');
+            await message.delete().catch(error => {
+                console.error('Error deleting message:', error);
+            });
             
             // Apply timeout immediately
-            await message.member.timeout(24 * 60 * 60 * 1000, `Spam detection: ${spamResult.reason}`).catch(console.error);
+            console.log('Applying timeout to user...');
+            await message.member.timeout(24 * 60 * 60 * 1000, `Spam detection: ${spamResult.reason}`).catch(error => {
+                console.error('Error applying timeout:', error);
+            });
             
             // Send warning message and handle logging asynchronously
+            console.log('Sending warning message and logging incident...');
             Promise.all([
                 // Send warning message
                 message.channel.send({
@@ -99,6 +112,8 @@ client.on('messageCreate', async (message) => {
                     }
                 })()
             ]).catch(console.error);
+        } else {
+            console.log(`No spam detected in message: "${message.content}"`);
         }
     } catch (error) {
         console.error('Error handling spam:', error);
@@ -111,6 +126,7 @@ client.on('messageCreate', async (message) => {
 
     // Handle commands
     if (message.content.startsWith(config.prefix)) {
+        console.log(`Processing command: ${message.content}`);
         await handleCommands(message);
     }
 });
