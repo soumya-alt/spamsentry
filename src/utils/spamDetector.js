@@ -8,6 +8,10 @@ let lastBannedWordsFetch = 0;
 const BANNED_WORDS_CACHE_TTL = 60000; // 1 minute
 const REPEAT_THRESHOLD = 3;
 const TIME_WINDOW = 5000; // 5 seconds
+const MAX_EMOJI_COUNT = 5;
+const MAX_CAPS_PERCENTAGE = 70;
+const MIN_MESSAGE_LENGTH_FOR_CAPS = 8;
+const MAX_REPEATED_CHARS = 5;
 
 // Emoji detection regex
 const EMOJI_REGEX = /[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F100}-\u{1F1FF}]|[\u{1F200}-\u{1F2FF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{1F900}-\u{1F9FF}]|[\u{1F1E0}-\u{1F1FF}]/gu;
@@ -61,8 +65,32 @@ const SUSPICIOUS_URL_PATTERNS = [
     /discord.*t\.co/i
 ];
 
+// Function to check for excessive caps
+function checkExcessiveCaps(content) {
+    if (content.length < MIN_MESSAGE_LENGTH_FOR_CAPS) return false;
+    
+    const upperCount = content.split('').filter(char => char === char.toUpperCase() && char.match(/[A-Z]/)).length;
+    const percentage = (upperCount / content.length) * 100;
+    
+    console.log(`Caps percentage: ${percentage}%`);
+    return percentage > MAX_CAPS_PERCENTAGE;
+}
+
+// Function to check for character spam
+function checkCharacterSpam(content) {
+    const charSpamRegex = /(.)\1{4,}/; // Same character repeated 5 or more times
+    return charSpamRegex.test(content);
+}
+
+// Function to check for line spam
+function checkLineSpam(content) {
+    const lines = content.split('\n');
+    return lines.length > 5; // More than 5 lines in a single message
+}
+
 async function handleSpamDetection(message) {
-    const content = message.content.toLowerCase();
+    const content = message.content;
+    const contentLower = content.toLowerCase();
     console.log(`Checking message for spam: "${content}"`);
     
     // Check for repeated messages
@@ -71,14 +99,32 @@ async function handleSpamDetection(message) {
         return { isSpam: true, reason: 'Repeated messages detected' };
     }
 
-    // Check for excessive emojis (only if there are more than 5 emojis)
+    // Check for excessive caps
+    if (checkExcessiveCaps(content)) {
+        console.log('Spam detected: Excessive caps');
+        return { isSpam: true, reason: 'Excessive use of capital letters' };
+    }
+
+    // Check for character spam
+    if (checkCharacterSpam(content)) {
+        console.log('Spam detected: Character spam');
+        return { isSpam: true, reason: 'Repeated character spam detected' };
+    }
+
+    // Check for line spam
+    if (checkLineSpam(content)) {
+        console.log('Spam detected: Line spam');
+        return { isSpam: true, reason: 'Too many lines in message' };
+    }
+
+    // Check for excessive emojis
     if (checkExcessiveEmojis(content)) {
         console.log('Spam detected: Excessive emojis');
         return { isSpam: true, reason: 'Excessive emojis detected' };
     }
 
     // Check for URLs
-    const urlCheck = checkUrls(content);
+    const urlCheck = checkUrls(contentLower);
     if (urlCheck.isSpam) {
         console.log(`Spam detected: ${urlCheck.reason}`);
         return { isSpam: true, reason: urlCheck.reason };
@@ -86,14 +132,14 @@ async function handleSpamDetection(message) {
 
     // Check for banned words
     console.log('Checking for banned words...');
-    const bannedWordCheck = await checkBannedWords(content);
+    const bannedWordCheck = await checkBannedWords(contentLower);
     if (bannedWordCheck.isSpam) {
         console.log(`Spam detected: ${bannedWordCheck.reason}`);
         return { isSpam: true, reason: bannedWordCheck.reason };
     }
 
     // Check custom spam rules
-    const customRule = await checkCustomRules(content);
+    const customRule = await checkCustomRules(contentLower);
     if (customRule) {
         console.log(`Spam detected: Custom rule - ${customRule}`);
         return { isSpam: true, reason: customRule };
@@ -128,7 +174,8 @@ async function checkRepeatedMessages(message) {
 
 function checkExcessiveEmojis(content) {
     const emojiCount = (content.match(EMOJI_REGEX) || []).length;
-    return emojiCount > 5;
+    console.log(`Emoji count: ${emojiCount}`);
+    return emojiCount > MAX_EMOJI_COUNT;
 }
 
 function checkUrls(content) {
